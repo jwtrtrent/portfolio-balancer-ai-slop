@@ -25,7 +25,22 @@ pub struct Allocation {
 const ALLOCATION_DUST: Decimal = dec!(0.01);
 
 pub fn allocate(source: &dyn PortfolioSource) -> Result<Allocation, RebalanceError> {
-    let account_total_value = compute_account_values(source)?;
+    allocate_with_exclusions(source, &HashSet::new())
+}
+
+/// Same as [`allocate`] but skips any `(account, security)` pair in
+/// `excluded`. An account is treated as ineligible for a sleeve if *any* of
+/// the sleeve's holdings is excluded there — policies generally want to
+/// redirect an entire sleeve away from an account, not split it.
+pub fn allocate_with_exclusions(
+    source: &dyn PortfolioSource,
+    excluded: &HashSet<(AccountId, SecurityId)>,
+) -> Result<Allocation, RebalanceError> {
+    // Shares in an excluded `(account, security)` can't be liquidated, so
+    // they don't count toward that account's free capacity. Without this
+    // correction a deny on a sell would leave the allocator thinking the
+    // account has dollars it can't actually spend.
+    let account_total_value = compute_account_values_with_locked(source, excluded)?;
     let total_value: Decimal = account_total_value.values().copied().sum();
     if total_value <= Decimal::ZERO {
         return Err(RebalanceError::ZeroPortfolioValue);
@@ -41,10 +56,20 @@ pub fn allocate(source: &dyn PortfolioSource) -> Result<Allocation, RebalanceErr
         sleeve_target_dollars.insert(sleeve.id, sleeve_dollars);
         let mut remaining = sleeve_dollars;
 
+        let sleeve_blocked = |aid: AccountId| {
+            sleeve
+                .holdings
+                .iter()
+                .any(|(sid, _)| excluded.contains(&(aid, *sid)))
+        };
+
         // Phase 1: fill preferred accounts in order.
         for &aid in &*sleeve.preferred_accounts {
             if remaining <= ALLOCATION_DUST {
                 break;
+            }
+            if sleeve_blocked(aid) {
+                continue;
             }
             let cap = remaining_capacity.get(&aid).copied().unwrap_or_default();
             if cap <= Decimal::ZERO {
@@ -60,26 +85,38 @@ pub fn allocate(source: &dyn PortfolioSource) -> Result<Allocation, RebalanceErr
         // capacity. Iterates because a uniform split may exceed an account's
         // remaining capacity, in which case we cap that account and re-split.
         if remaining > ALLOCATION_DUST {
-            let preferred: HashSet<AccountId> = sleeve.preferred_accounts.iter().copied().collect();
+            let mut blocked: HashSet<AccountId> =
+                sleeve.preferred_accounts.iter().copied().collect();
+            for account in source.accounts() {
+                if sleeve_blocked(account.id) {
+                    blocked.insert(account.id);
+                }
+            }
             spill_equally(
                 &mut remaining,
                 &mut remaining_capacity,
                 &mut per_account_ticker_dollars,
                 sleeve,
-                &preferred,
+                &blocked,
             );
         }
 
         // Phase 3: if there's still remainder (preferred filled all non-preferred
         // capacity but preferred accounts still have room), make one last sweep
-        // over any account with capacity.
+        // over any account with capacity. Excluded accounts stay excluded.
         if remaining > ALLOCATION_DUST {
+            let mut blocked: HashSet<AccountId> = HashSet::new();
+            for account in source.accounts() {
+                if sleeve_blocked(account.id) {
+                    blocked.insert(account.id);
+                }
+            }
             spill_equally(
                 &mut remaining,
                 &mut remaining_capacity,
                 &mut per_account_ticker_dollars,
                 sleeve,
-                &HashSet::new(),
+                &blocked,
             );
         }
     }
@@ -92,13 +129,17 @@ pub fn allocate(source: &dyn PortfolioSource) -> Result<Allocation, RebalanceErr
     })
 }
 
-fn compute_account_values(
+fn compute_account_values_with_locked(
     source: &dyn PortfolioSource,
+    locked: &HashSet<(AccountId, SecurityId)>,
 ) -> Result<HashMap<AccountId, Decimal>, RebalanceError> {
     let mut out = HashMap::with_capacity(source.accounts().len());
     for account in source.accounts() {
         let mut total = account.cash;
         for &(sid, shares) in &*account.positions {
+            if locked.contains(&(account.id, sid)) {
+                continue;
+            }
             let price = source.price(sid).ok_or_else(|| {
                 let ticker = source
                     .registry()
@@ -386,6 +427,61 @@ mod tests {
         let port = build(p, pr, t);
         let err = allocate(&port).unwrap_err();
         assert!(matches!(err, RebalanceError::ZeroPortfolioValue));
+    }
+
+    #[test]
+    fn exclusion_redirects_sleeve_to_next_account() {
+        let p = PositionsFile {
+            accounts: BTreeMap::from([
+                ("roth".to_string(), account(dec!(10000), &[])),
+                ("taxable".to_string(), account(dec!(10000), &[])),
+            ]),
+        };
+        let pr = prices_of(&[("VTI", dec!(100))]);
+        let t = TargetsFile {
+            sleeves: BTreeMap::from([(
+                "us".to_string(),
+                sleeve(dec!(1.0), &[("VTI", dec!(1.0))], &["taxable", "roth"]),
+            )]),
+        };
+        let port = build(p, pr, t);
+        let excluded = HashSet::from([(aid(&port, "taxable"), sid(&port, "VTI"))]);
+        let alloc = allocate_with_exclusions(&port, &excluded).unwrap();
+        // Taxable is blocked for the whole sleeve, so all dollars go to roth.
+        let vti = sid(&port, "VTI");
+        assert!(
+            !alloc
+                .per_account_ticker_dollars
+                .contains_key(&aid(&port, "taxable"))
+                || !alloc.per_account_ticker_dollars[&aid(&port, "taxable")].contains_key(&vti)
+        );
+        assert_eq!(
+            alloc.per_account_ticker_dollars[&aid(&port, "roth")][&vti],
+            dec!(10000)
+        );
+    }
+
+    #[test]
+    fn exclusion_without_alternative_leaves_sleeve_unallocated() {
+        let p = PositionsFile {
+            accounts: BTreeMap::from([("only".to_string(), account(dec!(5000), &[]))]),
+        };
+        let pr = prices_of(&[("VTI", dec!(100))]);
+        let t = TargetsFile {
+            sleeves: BTreeMap::from([(
+                "us".to_string(),
+                sleeve(dec!(1.0), &[("VTI", dec!(1.0))], &["only"]),
+            )]),
+        };
+        let port = build(p, pr, t);
+        let excluded = HashSet::from([(aid(&port, "only"), sid(&port, "VTI"))]);
+        let alloc = allocate_with_exclusions(&port, &excluded).unwrap();
+        // Every eligible account is excluded → no dollars credited for VTI.
+        assert!(alloc
+            .per_account_ticker_dollars
+            .get(&aid(&port, "only"))
+            .map(|m| !m.contains_key(&sid(&port, "VTI")))
+            .unwrap_or(true));
     }
 
     #[test]

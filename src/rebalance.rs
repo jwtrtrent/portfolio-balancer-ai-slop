@@ -212,6 +212,7 @@ fn build_summary(
         total_realized_gain,
         total_short_term_gain,
         total_long_term_gain,
+        policy_violations: Vec::new(),
     })
 }
 

@@ -193,6 +193,22 @@ pub struct Summary {
     pub total_short_term_gain: Decimal,
     #[serde(with = "rust_decimal::serde::str", default)]
     pub total_long_term_gain: Decimal,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policy_violations: Vec<PolicyViolation>,
+}
+
+/// One firing of a CEL policy for a specific `(account, ticker)` trade.
+/// Emitted by [`crate::policy::PolicySet`] during engine evaluation.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PolicyViolation {
+    pub policy: String,
+    /// One of "warn" or "deny".
+    pub action: String,
+    pub account: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ticker: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub message: String,
 }
 
 #[cfg(test)]
@@ -329,6 +345,13 @@ mod tests {
                 total_realized_gain: dec!(500.00),
                 total_short_term_gain: dec!(0.00),
                 total_long_term_gain: dec!(500.00),
+                policy_violations: vec![PolicyViolation {
+                    policy: "no-short-term-loss".into(),
+                    action: "warn".into(),
+                    account: "taxable".into(),
+                    ticker: Some("VTI".into()),
+                    message: "skipped sale that would realise a short-term loss".into(),
+                }],
             },
         };
         let s = serde_json::to_string(&out).unwrap();

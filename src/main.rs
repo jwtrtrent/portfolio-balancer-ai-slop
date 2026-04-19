@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use portfolio_rebalancer::{
-    DefaultEngine, JsonStoreLoader, LoadedStore, LotSelector, RebalanceEngine, StoreLoader,
+    DefaultEngine, JsonStoreLoader, LoadedStore, LotSelector, PolicyAwareEngine, PolicySet,
+    RebalanceEngine, StoreLoader,
 };
 use time::Date;
 
@@ -35,6 +36,9 @@ struct Cli {
     /// Trade-date anchor (YYYY-MM-DD). Defaults to today's UTC date.
     #[arg(long, value_parser = parse_date)]
     as_of: Option<Date>,
+    /// Optional path to a CEL policy file. Omitted → no policies applied.
+    #[arg(long)]
+    policies: Option<PathBuf>,
 }
 
 fn parse_date(s: &str) -> Result<Date, String> {
@@ -72,7 +76,13 @@ fn main() -> Result<()> {
     let LoadedStore { source, sink } = loader
         .load()
         .with_context(|| format!("loading portfolio from {}", cli.positions.display()))?;
-    let engine = DefaultEngine::new(cli.lot_strategy.into(), cli.as_of);
+    let default = DefaultEngine::new(cli.lot_strategy.into(), cli.as_of);
+    let policies = match &cli.policies {
+        Some(path) => PolicySet::from_file(path)
+            .with_context(|| format!("loading policies from {}", path.display()))?,
+        None => PolicySet::empty(),
+    };
+    let engine = PolicyAwareEngine::new(default, policies);
     let output = engine.rebalance(&*source)?;
     sink.write(&output)
         .with_context(|| format!("writing output to {}", cli.output.display()))?;

@@ -71,6 +71,12 @@ pub enum RebalanceError {
         aggregate: i64,
     },
 
+    #[error("failed to compile policy `{policy}`: {message}")]
+    PolicyCompile { policy: String, message: String },
+
+    #[error("failed to evaluate policy `{policy}`: {message}")]
+    PolicyEval { policy: String, message: String },
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 

@@ -22,6 +22,7 @@ pub mod id;
 pub mod io_json;
 pub mod lot;
 pub mod model;
+pub mod policy;
 pub mod rebalance;
 pub mod registry;
 pub mod sink;
@@ -30,14 +31,16 @@ pub mod store;
 pub mod validate;
 
 pub use core::InMemoryPortfolio;
-pub use engine::{DefaultEngine, RebalanceEngine};
+pub use engine::{DefaultEngine, PolicyAwareEngine, RebalanceEngine};
 pub use errors::RebalanceError;
 pub use id::{AccountId, LotId, SecurityId, SleeveId};
 pub use lot::{LotData, LotSelector, SaleAllocation};
 pub use model::{
-    Account, AccountResult, DecimalStr, LotEntry, LotList, PositionEntry, PositionResult,
-    PositionsFile, PricesFile, RebalanceOutput, SaleLotResult, Sleeve, Summary, TargetsFile,
+    Account, AccountResult, DecimalStr, LotEntry, LotList, PolicyViolation, PositionEntry,
+    PositionResult, PositionsFile, PricesFile, RebalanceOutput, SaleLotResult, Sleeve, Summary,
+    TargetsFile,
 };
+pub use policy::{PolicyAction, PolicyFile, PolicySet, PolicySpec};
 pub use registry::{Registry, SharedRegistry};
 pub use sink::OutputSink;
 pub use source::{AccountData, PortfolioSource, SleeveData};
