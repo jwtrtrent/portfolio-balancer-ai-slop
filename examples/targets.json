@@ -1,0 +1,19 @@
+{
+  "sleeves": {
+    "us_equity": {
+      "target_weight": "0.50",
+      "holdings": { "VTI": "1.00" },
+      "preferred_accounts": ["taxable", "roth_ira"]
+    },
+    "intl_equity": {
+      "target_weight": "0.30",
+      "holdings": { "VXUS": "1.00" },
+      "preferred_accounts": ["taxable"]
+    },
+    "bonds": {
+      "target_weight": "0.20",
+      "holdings": { "BND": "0.7", "BNDX": "0.3" },
+      "preferred_accounts": ["roth_ira", "traditional"]
+    }
+  }
+}
