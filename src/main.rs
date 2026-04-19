@@ -3,8 +3,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Parser;
 use portfolio_rebalancer::{
-    io_json::{read_json, write_json},
-    rebalance, PositionsFile, PricesFile, TargetsFile,
+    DefaultEngine, JsonStoreLoader, LoadedStore, RebalanceEngine, StoreLoader,
 };
 
 /// Multi-account stock portfolio rebalancer.
@@ -30,16 +29,17 @@ struct Cli {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let positions: PositionsFile = read_json(&cli.positions)
-        .with_context(|| format!("reading positions from {}", cli.positions.display()))?;
-    let prices: PricesFile = read_json(&cli.prices)
-        .with_context(|| format!("reading prices from {}", cli.prices.display()))?;
-    let targets: TargetsFile = read_json(&cli.targets)
-        .with_context(|| format!("reading targets from {}", cli.targets.display()))?;
-
-    let output = rebalance(&positions, &prices, &targets)?;
-
-    write_json(&cli.output, &output)
+    let loader = JsonStoreLoader {
+        positions_path: cli.positions.clone(),
+        prices_path: cli.prices.clone(),
+        targets_path: cli.targets.clone(),
+        output_path: cli.output.clone(),
+    };
+    let LoadedStore { source, sink } = loader
+        .load()
+        .with_context(|| format!("loading portfolio from {}", cli.positions.display()))?;
+    let output = DefaultEngine.rebalance(&*source)?;
+    sink.write(&output)
         .with_context(|| format!("writing output to {}", cli.output.display()))?;
     Ok(())
 }

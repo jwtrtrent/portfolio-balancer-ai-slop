@@ -4,13 +4,11 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 pub type Ticker = String;
-pub type AccountId = String;
-pub type SleeveId = String;
 
 /// `positions.json` — current holdings per account.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PositionsFile {
-    pub accounts: BTreeMap<AccountId, Account>,
+    pub accounts: BTreeMap<String, Account>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -51,7 +49,7 @@ impl DecimalStr {
 /// `targets.json` — sleeve definitions.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct TargetsFile {
-    pub sleeves: BTreeMap<SleeveId, Sleeve>,
+    pub sleeves: BTreeMap<String, Sleeve>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -60,13 +58,13 @@ pub struct Sleeve {
     pub target_weight: Decimal,
     pub holdings: BTreeMap<Ticker, DecimalStr>,
     #[serde(default)]
-    pub preferred_accounts: Vec<AccountId>,
+    pub preferred_accounts: Vec<String>,
 }
 
 /// Output of a rebalance run.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RebalanceOutput {
-    pub accounts: BTreeMap<AccountId, AccountResult>,
+    pub accounts: BTreeMap<String, AccountResult>,
     pub summary: Summary,
 }
 
@@ -94,7 +92,7 @@ pub struct PositionResult {
 pub struct Summary {
     #[serde(with = "rust_decimal::serde::str")]
     pub total_value: Decimal,
-    pub sleeve_drift_bps: BTreeMap<SleeveId, i64>,
+    pub sleeve_drift_bps: BTreeMap<String, i64>,
     pub max_drift_bps: i64,
 }
 

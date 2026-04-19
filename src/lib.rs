@@ -1,31 +1,42 @@
 //! Portfolio rebalancer library.
 //!
-//! Public entry point: [`rebalance`], which takes parsed input files and
-//! returns a [`RebalanceOutput`] describing the trades to execute.
+//! The library is organised around three abstractions:
+//!
+//! - [`PortfolioSource`]: read-only, thread-safe view of a portfolio.
+//! - [`OutputSink`]: write-only destination for a [`RebalanceOutput`].
+//! - [`StoreLoader`]: pairs a source with a sink for a given backend
+//!   (JSON today, SQLite/Postgres later).
+//!
+//! A [`RebalanceEngine`] consumes a `&dyn PortfolioSource` and produces a
+//! `RebalanceOutput`. The default pipeline is validate → allocate → build
+//! trades, exposed as [`DefaultEngine`].
 
 pub mod allocate;
+pub mod core;
+pub mod engine;
 pub mod errors;
+pub mod id;
 pub mod io_json;
 pub mod model;
 pub mod rebalance;
+pub mod registry;
+pub mod sink;
+pub mod source;
+pub mod store;
 pub mod validate;
 
+pub use core::InMemoryPortfolio;
+pub use engine::{DefaultEngine, RebalanceEngine};
 pub use errors::RebalanceError;
+pub use id::{AccountId, SecurityId, SleeveId};
 pub use model::{
     Account, AccountResult, DecimalStr, PositionResult, PositionsFile, PricesFile, RebalanceOutput,
     Sleeve, Summary, TargetsFile,
 };
-
-/// Validate inputs, allocate sleeves to accounts, and compute trades.
-pub fn rebalance(
-    positions: &PositionsFile,
-    prices: &PricesFile,
-    targets: &TargetsFile,
-) -> Result<RebalanceOutput, RebalanceError> {
-    validate::validate(positions, prices, targets)?;
-    let allocation = allocate::allocate(positions, prices, targets)?;
-    rebalance::build_output(positions, prices, targets, &allocation)
-}
+pub use registry::{Registry, SharedRegistry};
+pub use sink::OutputSink;
+pub use source::{AccountData, PortfolioSource, SleeveData};
+pub use store::{JsonOutputSink, JsonStoreLoader, LoadedStore, StoreLoader};
 
 #[cfg(test)]
 mod tests {
@@ -107,8 +118,8 @@ mod tests {
             ]),
         };
 
-        let out = rebalance(&positions, &prices, &targets).unwrap();
-        // No account ends up with negative cash.
+        let portfolio = InMemoryPortfolio::from_dtos(&positions, &prices, &targets).unwrap();
+        let out = DefaultEngine.rebalance(&portfolio).unwrap();
         for (id, acct) in &out.accounts {
             assert!(
                 acct.ending_cash >= Decimal::ZERO,
@@ -118,8 +129,6 @@ mod tests {
         }
         // Total value: 1500 + 200 + 750 + 10*250 + 50*75 + 40*250 + 25*60 = 20_200.
         assert_eq!(out.summary.total_value, dec!(20200));
-        // Drift bounded by whole-share rounding: at $250/share in a $20k
-        // portfolio, one share is 124 bps; allow a couple of shares of slack.
         assert!(
             out.summary.max_drift_bps < 500,
             "drift too large: {}",
