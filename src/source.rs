@@ -3,6 +3,7 @@ use std::sync::Arc;
 use rust_decimal::Decimal;
 
 use crate::id::{AccountId, SecurityId, SleeveId};
+use crate::lot::LotData;
 use crate::registry::Registry;
 
 /// ID-keyed view of a single account. Fields are shared cheaply via `Arc`.
@@ -14,6 +15,9 @@ pub struct AccountData {
     pub cash: Decimal,
     /// Sorted by `SecurityId` so equal views compare stably.
     pub positions: Arc<[(SecurityId, i64)]>,
+    /// All tax lots held in this account, in stable order. Lots for a given
+    /// security are contiguous and sorted by acquired date then `LotId`.
+    pub lots: Arc<[LotData]>,
 }
 
 /// ID-keyed view of a sleeve.
@@ -41,4 +45,13 @@ pub trait PortfolioSource: Send + Sync {
 
     fn sleeves(&self) -> &[SleeveData];
     fn sleeve(&self, id: SleeveId) -> Option<&SleeveData>;
+
+    /// Lots for `(account, security)` in stable order. Default implementation
+    /// filters `account.lots`; backends with indexed storage can override.
+    fn lots_for(&self, account: AccountId, security: SecurityId) -> Vec<&LotData> {
+        match self.account(account) {
+            Some(a) => a.lots.iter().filter(|l| l.security == security).collect(),
+            None => Vec::new(),
+        }
+    }
 }

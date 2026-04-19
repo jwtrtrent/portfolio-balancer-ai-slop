@@ -9,7 +9,10 @@
 //!
 //! A [`RebalanceEngine`] consumes a `&dyn PortfolioSource` and produces a
 //! `RebalanceOutput`. The default pipeline is validate → allocate → build
-//! trades, exposed as [`DefaultEngine`].
+//! trades, exposed as [`DefaultEngine`]. Tax lots are first-class: sell
+//! trades are expanded into per-lot sale allocations using the configured
+//! [`LotSelector`] so callers can report realised gain/loss split by
+//! holding period.
 
 pub mod allocate;
 pub mod core;
@@ -17,6 +20,7 @@ pub mod engine;
 pub mod errors;
 pub mod id;
 pub mod io_json;
+pub mod lot;
 pub mod model;
 pub mod rebalance;
 pub mod registry;
@@ -28,10 +32,11 @@ pub mod validate;
 pub use core::InMemoryPortfolio;
 pub use engine::{DefaultEngine, RebalanceEngine};
 pub use errors::RebalanceError;
-pub use id::{AccountId, SecurityId, SleeveId};
+pub use id::{AccountId, LotId, SecurityId, SleeveId};
+pub use lot::{LotData, LotSelector, SaleAllocation};
 pub use model::{
-    Account, AccountResult, DecimalStr, PositionResult, PositionsFile, PricesFile, RebalanceOutput,
-    Sleeve, Summary, TargetsFile,
+    Account, AccountResult, DecimalStr, LotEntry, LotList, PositionEntry, PositionResult,
+    PositionsFile, PricesFile, RebalanceOutput, SaleLotResult, Sleeve, Summary, TargetsFile,
 };
 pub use registry::{Registry, SharedRegistry};
 pub use sink::OutputSink;
@@ -44,6 +49,11 @@ mod tests {
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
     use std::collections::BTreeMap;
+    use time::macros::date;
+
+    fn shares(n: i64) -> PositionEntry {
+        PositionEntry::Shares(n)
+    }
 
     #[test]
     fn end_to_end_smoke() {
@@ -54,7 +64,7 @@ mod tests {
                     Account {
                         r#type: Some("roth".into()),
                         cash: dec!(1500),
-                        positions: BTreeMap::from([("VTI".to_string(), 10)]),
+                        positions: BTreeMap::from([("VTI".to_string(), shares(10))]),
                     },
                 ),
                 (
@@ -62,7 +72,7 @@ mod tests {
                     Account {
                         r#type: Some("traditional".into()),
                         cash: dec!(200),
-                        positions: BTreeMap::from([("BND".to_string(), 50)]),
+                        positions: BTreeMap::from([("BND".to_string(), shares(50))]),
                     },
                 ),
                 (
@@ -71,8 +81,8 @@ mod tests {
                         r#type: Some("taxable".into()),
                         cash: dec!(750),
                         positions: BTreeMap::from([
-                            ("VTI".to_string(), 40),
-                            ("VXUS".to_string(), 25),
+                            ("VTI".to_string(), shares(40)),
+                            ("VXUS".to_string(), shares(25)),
                         ]),
                     },
                 ),
@@ -119,7 +129,8 @@ mod tests {
         };
 
         let portfolio = InMemoryPortfolio::from_dtos(&positions, &prices, &targets).unwrap();
-        let out = DefaultEngine.rebalance(&portfolio).unwrap();
+        let engine = DefaultEngine::new(LotSelector::Fifo, Some(date!(2025 - 01 - 01)));
+        let out = engine.rebalance(&portfolio).unwrap();
         for (id, acct) in &out.accounts {
             assert!(
                 acct.ending_cash >= Decimal::ZERO,
@@ -134,5 +145,7 @@ mod tests {
             "drift too large: {}",
             out.summary.max_drift_bps
         );
+        // No lots declared → no realised gains tracked.
+        assert_eq!(out.summary.total_realized_gain, Decimal::ZERO);
     }
 }

@@ -23,6 +23,7 @@ thiserror = "1"
 anyhow = "1"
 rust_decimal = { version = "1", features = ["serde-with-str"] }
 rust_decimal_macros = "1"
+time = { version = "0.3", features = ["serde", "parsing", "formatting", "macros"] }
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -1,15 +1,17 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use portfolio_rebalancer::{
-    DefaultEngine, JsonStoreLoader, LoadedStore, RebalanceEngine, StoreLoader,
+    DefaultEngine, JsonStoreLoader, LoadedStore, LotSelector, RebalanceEngine, StoreLoader,
 };
+use time::Date;
 
 /// Multi-account stock portfolio rebalancer.
 ///
 /// Reads three JSON inputs (positions, prices, targets) and writes a JSON
-/// output containing the trades and resulting positions for each account.
+/// output containing the trades, resulting positions, and realised gains for
+/// each account.
 #[derive(Parser, Debug)]
 #[command(name = "portfolio-rebalancer", version, about)]
 struct Cli {
@@ -25,6 +27,38 @@ struct Cli {
     /// Path to write the rebalance output JSON.
     #[arg(long)]
     output: PathBuf,
+    /// Lot selection strategy for sells. Applies only to positions declared
+    /// with explicit tax lots; bare share counts are liquidated without any
+    /// per-lot reporting.
+    #[arg(long, value_enum, default_value_t = LotStrategy::Fifo)]
+    lot_strategy: LotStrategy,
+    /// Trade-date anchor (YYYY-MM-DD). Defaults to today's UTC date.
+    #[arg(long, value_parser = parse_date)]
+    as_of: Option<Date>,
+}
+
+fn parse_date(s: &str) -> Result<Date, String> {
+    let fmt = time::macros::format_description!("[year]-[month]-[day]");
+    Date::parse(s, fmt).map_err(|e| format!("expected YYYY-MM-DD: {e}"))
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum LotStrategy {
+    Fifo,
+    Lifo,
+    Hifo,
+    Lofo,
+}
+
+impl From<LotStrategy> for LotSelector {
+    fn from(s: LotStrategy) -> Self {
+        match s {
+            LotStrategy::Fifo => LotSelector::Fifo,
+            LotStrategy::Lifo => LotSelector::Lifo,
+            LotStrategy::Hifo => LotSelector::Hifo,
+            LotStrategy::Lofo => LotSelector::Lofo,
+        }
+    }
 }
 
 fn main() -> Result<()> {
@@ -38,7 +72,8 @@ fn main() -> Result<()> {
     let LoadedStore { source, sink } = loader
         .load()
         .with_context(|| format!("loading portfolio from {}", cli.positions.display()))?;
-    let output = DefaultEngine.rebalance(&*source)?;
+    let engine = DefaultEngine::new(cli.lot_strategy.into(), cli.as_of);
+    let output = engine.rebalance(&*source)?;
     sink.write(&output)
         .with_context(|| format!("writing output to {}", cli.output.display()))?;
     Ok(())

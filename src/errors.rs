@@ -40,6 +40,37 @@ pub enum RebalanceError {
     #[error("portfolio total value is zero — nothing to rebalance")]
     ZeroPortfolioValue,
 
+    #[error("lot in account `{account}` for `{ticker}` has non-positive quantity {quantity}")]
+    NonPositiveLotQuantity {
+        account: String,
+        ticker: String,
+        quantity: i64,
+    },
+
+    #[error("lot in account `{account}` for `{ticker}` has negative cost basis {basis}")]
+    NegativeLotBasis {
+        account: String,
+        ticker: String,
+        basis: String,
+    },
+
+    #[error("lot in account `{account}` for `{ticker}` is acquired in the future: {acquired}")]
+    LotAcquiredAfterAsOf {
+        account: String,
+        ticker: String,
+        acquired: String,
+    },
+
+    #[error(
+        "lots for `{ticker}` in account `{account}` sum to {lot_sum} but position is {aggregate}"
+    )]
+    LotSumMismatch {
+        account: String,
+        ticker: String,
+        lot_sum: i64,
+        aggregate: i64,
+    },
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 

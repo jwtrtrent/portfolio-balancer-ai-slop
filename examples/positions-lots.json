@@ -1,0 +1,31 @@
+{
+  "accounts": {
+    "roth_ira": {
+      "type": "roth",
+      "cash": "1500.00",
+      "positions": { "VTI": 10 }
+    },
+    "traditional": {
+      "type": "traditional",
+      "cash": "200.00",
+      "positions": { "BND": 50 }
+    },
+    "taxable": {
+      "type": "taxable",
+      "cash": "750.00",
+      "positions": {
+        "VTI": {
+          "lots": [
+            { "id": "vti-2019", "quantity": 20, "cost_basis": "150.00", "acquired": "2019-04-01" },
+            { "id": "vti-2023", "quantity": 20, "cost_basis": "230.00", "acquired": "2023-11-15" }
+          ]
+        },
+        "VXUS": {
+          "lots": [
+            { "id": "vxus-2020", "quantity": 25, "cost_basis": "45.00", "acquired": "2020-07-10" }
+          ]
+        }
+      }
+    }
+  }
+}

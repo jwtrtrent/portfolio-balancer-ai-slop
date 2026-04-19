@@ -22,6 +22,7 @@ macro_rules! define_id {
 define_id!(AccountId);
 define_id!(SecurityId);
 define_id!(SleeveId);
+define_id!(LotId);
 
 #[cfg(test)]
 mod tests {

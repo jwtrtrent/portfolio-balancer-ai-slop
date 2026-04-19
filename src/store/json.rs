@@ -92,7 +92,7 @@ mod tests {
             output_path: output.clone(),
         };
         let LoadedStore { source, sink } = loader.load().unwrap();
-        let out = DefaultEngine.rebalance(&*source).unwrap();
+        let out = DefaultEngine::default().rebalance(&*source).unwrap();
         sink.write(&out).unwrap();
 
         let written: RebalanceOutput = read_json(&output).unwrap();

@@ -167,7 +167,9 @@ fn spill_equally(
 mod tests {
     use super::*;
     use crate::core::InMemoryPortfolio;
-    use crate::model::{Account, DecimalStr, PositionsFile, PricesFile, Sleeve, TargetsFile};
+    use crate::model::{
+        Account, DecimalStr, PositionEntry, PositionsFile, PricesFile, Sleeve, TargetsFile,
+    };
     use pretty_assertions::assert_eq;
     use std::collections::BTreeMap;
 
@@ -175,7 +177,10 @@ mod tests {
         Account {
             r#type: None,
             cash,
-            positions: positions.iter().map(|(t, s)| (t.to_string(), *s)).collect(),
+            positions: positions
+                .iter()
+                .map(|(t, s)| (t.to_string(), PositionEntry::Shares(*s)))
+                .collect(),
         }
     }
 
