@@ -44,7 +44,11 @@ pub use policy::{PolicyAction, PolicyFile, PolicySet, PolicySpec};
 pub use registry::{Registry, SharedRegistry};
 pub use sink::OutputSink;
 pub use source::{AccountData, PortfolioSource, SleeveData};
-pub use store::{JsonOutputSink, JsonStoreLoader, LoadedStore, StoreLoader};
+pub use store::sqlite::ingest_inputs as sqlite_ingest_inputs;
+pub use store::{
+    JsonOutputSink, JsonStoreLoader, LoadedStore, SqliteOutputSink, SqlitePortfolioSource,
+    SqliteStoreLoader, StoreLoader,
+};
 
 #[cfg(test)]
 mod tests {

@@ -190,6 +190,88 @@ fn cli_honors_policy_file() {
 }
 
 #[test]
+fn cli_sqlite_round_trip_persists_run_and_trades() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let examples = std::path::Path::new(manifest_dir).join("examples");
+    let tmp = tempdir().unwrap();
+    let db = tmp.path().join("portfolio.sqlite");
+
+    // First invocation: ingest the JSON examples into a fresh DB and write
+    // the run.
+    let mut cmd = Command::cargo_bin("portfolio-rebalancer").unwrap();
+    cmd.arg("--store")
+        .arg("sqlite")
+        .arg("--db")
+        .arg(&db)
+        .arg("--positions")
+        .arg(examples.join("positions.json"))
+        .arg("--prices")
+        .arg(examples.join("prices.json"))
+        .arg("--targets")
+        .arg(examples.join("targets.json"))
+        .arg("--run-label")
+        .arg("integration-1");
+    cmd.assert().success();
+
+    // Second invocation: skip the JSON flags so we exercise the
+    // SQLite-only read path. Should produce a second run row.
+    let mut cmd = Command::cargo_bin("portfolio-rebalancer").unwrap();
+    cmd.arg("--store")
+        .arg("sqlite")
+        .arg("--db")
+        .arg(&db)
+        .arg("--run-label")
+        .arg("integration-2");
+    cmd.assert().success();
+
+    // Inspect the database via a third process — opening rusqlite directly
+    // here would entangle the test binary with the bundled libsqlite, so use
+    // the sqlite3 CLI if available; otherwise fall back to opening through
+    // the lib.
+    use portfolio_rebalancer::store::sqlite::open_pool;
+    let pool = open_pool(&db).unwrap();
+    let conn = pool.get().unwrap();
+    let runs: Vec<(i64, Option<String>)> = conn
+        .prepare("SELECT id, label FROM rebalance_runs ORDER BY id")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].1.as_deref(), Some("integration-1"));
+    assert_eq!(runs[1].1.as_deref(), Some("integration-2"));
+
+    // Both runs should have the same total_value (same inputs).
+    let totals: Vec<String> = conn
+        .prepare("SELECT total_value FROM rebalance_runs ORDER BY id")
+        .unwrap()
+        .query_map([], |r| r.get::<_, String>(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert_eq!(totals[0], totals[1]);
+    assert_eq!(totals[0], "20200.00");
+
+    // Trades exist for the second run.
+    let trade_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM rebalance_trades WHERE run_id = ?1",
+            [runs[1].0],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(trade_count > 0);
+}
+
+#[test]
+fn cli_sqlite_requires_db_flag() {
+    let mut cmd = Command::cargo_bin("portfolio-rebalancer").unwrap();
+    cmd.arg("--store").arg("sqlite");
+    cmd.assert().failure();
+}
+
+#[test]
 fn cli_errors_on_invalid_targets() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let examples = std::path::Path::new(manifest_dir).join("examples");

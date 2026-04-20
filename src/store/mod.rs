@@ -5,8 +5,10 @@ use crate::sink::OutputSink;
 use crate::source::PortfolioSource;
 
 pub mod json;
+pub mod sqlite;
 
 pub use json::{JsonOutputSink, JsonStoreLoader};
+pub use sqlite::{SqliteOutputSink, SqlitePortfolioSource, SqliteStoreLoader};
 
 /// Loads a portfolio source and returns a paired output sink. Backends
 /// (JSON, SQLite, ...) implement this trait. Each call returns fresh

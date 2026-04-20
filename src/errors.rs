@@ -82,4 +82,19 @@ pub enum RebalanceError {
 
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("sqlite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+
+    #[error("sqlite pool error: {0}")]
+    SqlitePool(String),
+
+    #[error("sqlite store: {0}")]
+    SqliteStore(String),
+}
+
+impl From<r2d2::Error> for RebalanceError {
+    fn from(e: r2d2::Error) -> Self {
+        RebalanceError::SqlitePool(e.to_string())
+    }
 }
