@@ -1,0 +1,16 @@
+{
+  "policies": [
+    {
+      "name": "no-international-in-retirement",
+      "when": "(account.type == 'roth' || account.type == 'traditional') && position.ticker == 'VXUS'",
+      "action": "deny",
+      "message": "keep international equity in taxable for foreign-tax-credit eligibility"
+    },
+    {
+      "name": "flag-short-term-losses",
+      "when": "position.is_sell && sale != null && sale.short_term_gain < 0.0",
+      "action": "warn",
+      "message": "sale realises a short-term loss"
+    }
+  ]
+}

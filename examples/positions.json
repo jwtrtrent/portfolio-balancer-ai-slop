@@ -1,0 +1,19 @@
+{
+  "accounts": {
+    "roth_ira": {
+      "type": "roth",
+      "cash": "1500.00",
+      "positions": { "VTI": 10 }
+    },
+    "traditional": {
+      "type": "traditional",
+      "cash": "200.00",
+      "positions": { "BND": 50 }
+    },
+    "taxable": {
+      "type": "taxable",
+      "cash": "750.00",
+      "positions": { "VTI": 40, "VXUS": 25 }
+    }
+  }
+}
